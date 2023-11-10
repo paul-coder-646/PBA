@@ -1,0 +1,393 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#85b6e8;text-align:center}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Planet Simulation</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Planet Simulation</h1>
+	<table style="text-align: center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100">
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #FF0000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.restart()" id="timeStepSizeInput" type="number" value="0.0001" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="timeIntegrationInput">Time integration method</label></td>
+					<td><select onchange="gui.restart()" id="timeIntegrationInput"> 
+						<option>Explicit Euler</option> 
+						<option selected="selected">Symplectic Euler</option> 
+						<option>Runge-Kutta 2</option> 
+						<option>Verlet</option> 
+						<option>Leapfrog</option> 
+					</select> 
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravitational Constant</label></td>
+					<td><input onchange="gui.restart()" id="gravityInput" type="number" value="6.67" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="massInput">Mass</label></td>
+					<td><input onchange="gui.restart()" id="massInput" type="number" value="500.0" step="0.01"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Planet 
+	{
+		constructor (name, x, y, m, vx, vy) // New Planet gets Created
+		{
+			this.name = name;
+			this.x = x;
+			this.y = y;
+			this.fx = 0.0;
+			this.fy = 0.0;
+			this.vx = vx;
+			this.vy = vy;
+			this.mass = m;
+		}
+	}
+	class Marker 
+	{
+		constructor (x, y, planet, createtime, timeStepSize) 
+		{
+			this.x = x;
+			this.y = y;
+			this.particle_i = planet;
+			this.life_time = createtime + 40 * timeStepSize;
+		}
+	}
+
+
+	class Simulation
+	{
+		constructor()
+		{
+			this.planets = [];
+			this.gravity_const = 6.67e-11;
+			this.timeStepSize = 0.05;
+			this.time = 0;
+			this.endTime = 3.0;
+			this.timeIntegrationMethod = "Symplectic Euler";
+			this.pause = true;
+			this.distances = [0, 0, 0, 0];
+			this.positions = [];
+
+			this.init();
+		}
+		
+		init()
+		{					
+			this.planets = [];
+			this.planets.push(new Planet("Sun", 0, 0, this.mass, 0, 0));
+			this.planets.push(new Planet("Venus", 1, 0, 1, 0, 200));
+			this.planets.push(new Planet("Earth", 2, 0, 1, 0, 200));
+			this.planets.push(new Planet("Neptun", 2.5, 0, 1, 0, 200));
+			
+			this.time = 0.0;
+	
+		}
+		
+		explicitEuler(p)
+		{
+			let dt = this.timeStepSize;
+			// symplectic Euler step
+				
+				// integrate position
+				p.x = p.x + dt * p.vx;
+				p.y = p.y + dt * p.vy;
+				
+				// integrate velocity considering gravitational acceleration and forces 
+				p.vx = p.vx + dt * p.fx / p.mass;
+				p.vy = p.vy + dt * (p.fy / p.mass);
+			
+		}
+
+		leapfrog(p) //TODO: Change a_y, update Acceleration
+		{
+			let dt = this.timeStepSize;
+
+			// symplectic Euler step
+			
+			let a_x = p.fx / p.mass;
+			let a_y = p.fy / p.mass;
+
+			// integrate position
+			p.x = p.x + dt * p.vx + 0.5 * a_x * dt*dt;
+			p.y = p.y + dt * p.vy + 0.5 * a_y * dt*dt;
+			
+			// integrate velocity considering gravitational acceleration and forces 
+			p.vx = p.vx + dt * a_x;
+			p.vy = p.vy + dt * a_y;
+			}
+
+		verlet(p) //TODO: Change a_y, update Acceleration
+		{
+			let dt = this.timeStepSize;
+			// symplectic Euler step
+
+			let a_x = p.fx / p.mass;
+			let a_y = p.fy / p.mass;
+
+			let prev_x, prev_y;
+			
+			if(this.solution.length == 1)
+			{	
+				this.leapfrog();
+			}
+			else
+			{
+				[prev_x, prev_y] = p.positions[this.positions.length - 2];
+				p.x = 2 * p.x - prev_x;
+				p.y = 2 * p.y - prev_y + (a_y * dt * dt);
+
+				p.vx = (p.x - prev_x) / dt;
+				p.vy = (p.y - prev_y) / dt;
+			}
+		}
+		
+		
+		symplecticEuler(p)
+		{
+		let dt = this.timeStepSize;
+		// symplectic Euler step
+
+			// integrate velocity considering gravitational acceleration and forces 
+			p.vx = p.vx + dt * p.fx / p.mass;
+			p.vy = p.vy + dt * (p.fy / p.mass);
+		
+			// integrate position
+			p.x = p.x + dt * p.vx;
+			p.y = p.y + dt * p.vy;
+		}
+		
+		//Compute Gravitational Force between both particles
+		computeForce(p1, p2)
+		{
+			let dx = p2.x - p1.x;
+    		let dy = p2.y - p1.y;
+
+			let distance = Math.sqrt(dx * dx + dy * dy);
+			
+			// Avoid division by 0
+			if (distance === 0) return [0, 0];
+
+			let forceMagnitude = ((this.gravity_const * p1.mass * p2.mass) / (distance * distance));
+			let forceDirX = dx / distance;
+			let forceDirY = dy / distance;
+
+			let f1 = [-forceMagnitude * forceDirX, -forceMagnitude * forceDirY]; // Force on p1
+    		let f2 = [forceMagnitude * forceDirX, forceMagnitude * forceDirY]; // Force on p2
+			
+			// f2 is pushed, f1 is pulled
+    		return [f1, f2];
+		}
+		// simulation step
+		simulationStep()
+		{	
+			if (this.pause)
+				return;
+
+			let dt = this.timeStepSize;
+
+			if (this.time < this.endTime) 
+			{
+				for(let p of this.planets) 
+				{
+					if (p.name === "Sun") continue;
+					
+					this.positions.push(new Marker(p.x, p.y, p, this.time, this.timeStepSize));
+				}
+			}
+
+			for(let i = 1; i < this.planets.length; i++)
+			{
+					let [f1, f2] = this.computeForce(this.planets[0], this.planets[i]);
+					this.planets[i].fx += f1[0];
+        			this.planets[i].fy += f1[1];
+			}
+			
+			for(let p of this.planets) 
+			{
+				if(p.name !== "Sun")
+				{	
+					// time integration step
+				if (this.timeIntegrationMethod == "Explicit Euler")
+					this.explicitEuler(p);
+				else if (this.timeIntegrationMethod == "Symplectic Euler")
+					this.symplecticEuler(p);
+				else if (this.timeIntegrationMethod == "Runge-Kutta 2")
+					this.rungeKutta2(p);
+				else if (this.timeIntegrationMethod == "Verlet")
+					this.verlet(p);
+				else if (this.timeIntegrationMethod == "Leapfrog")
+					this.leapfrog(p);
+				}
+			}
+			
+			// update simulation time
+			this.time = this.time + dt;
+			
+			
+			for(let i = 0; i < this.positions.length; i++)
+			{	
+				console.log(this.positions[i].life_time, this.time);
+				if(this.positions[i].life_time < this.time)
+				{
+					this.positions.splice(i, 1);
+				}
+			}
+			
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 150;
+			this.radiae = [0.4, 0.1, 0.15, 0.05];
+			this.colors = ["#e5e500", "#c0100e", "#0000FF", "#e59400"]
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			if (this.sim == undefined)
+				this.sim = new Simulation();
+				
+			this.sim.gravity_const = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.mass = parseFloat(document.getElementById('massInput').value);
+			this.sim.timeIntegrationMethod = document.getElementById('timeIntegrationInput').value;
+				
+			this.sim.init();
+			
+			this.mainLoop();
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+					
+			// draw particles as circles
+			for (let i = 0; i < this.sim.planets.length; i++) 
+			{
+				let p = this.sim.planets[i];
+				let r = this.radiae[i];
+				console.log(this.planets);
+				this.c.fillStyle = this.colors[i];
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			 
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+
+			for (let i = 0; i < this.sim.positions.length; i++) 
+			{
+				let p = this.sim.positions[i];
+				let r = 0.025; 
+				this.c.fillStyle = "#000000";
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+		
+		}
+		
+		mainLoop()
+		{
+			this.sim.simulationStep();				
+			document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+
+			this.draw();
+			if (!this.sim.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.sim.pause = !this.sim.pause;
+			if (!this.sim.pause)
+			{
+				this.mainLoop();
+			}
+		}
+			
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+			this.draw();
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
